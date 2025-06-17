@@ -244,6 +244,7 @@
         <a href="kendaraan.php">Kendaraan</a>
         <a href="penyewa.php">Penyewa</a>
         <a href="rental.php">Rental</a>
+        <a href="laporan.php">Laporan</a>
     </nav>
 </header>
  

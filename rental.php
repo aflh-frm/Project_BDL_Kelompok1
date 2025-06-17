@@ -2,6 +2,28 @@
 require_once 'config.php';
 require_once 'function.php';
 
+// Contoh operasi agregat: Total Pendapatan
+$total_pendapatan = $conn->query("SELECT SUM(total_price) AS total FROM rental")->fetch_assoc()['total'];
+
+// Modifikasi form tambah rental (gunakan function database):
+if ($form_type === 'rental_create') {
+    $vehicle_id = clean_input($_POST['vehicle_id']);
+    $renter_id = clean_input($_POST['renter_id']);
+    $start_date = clean_input($_POST['start_date']);
+    $end_date = clean_input($_POST['end_date']);
+    
+    // Hitung total harga menggunakan stored function
+    $harga_per_hari = $conn->query("SELECT daily_price FROM kendaraan WHERE vehicle_id = '$vehicle_id'")->fetch_assoc()['daily_price'];
+    $total_price = $conn->query("SELECT fn_hitung_total_harga($harga_per_hari, '$start_date', '$end_date') AS total")->fetch_assoc()['total'];
+    
+    $stmt = $conn->prepare("INSERT INTO rental (vehicle_id, renter_id, start_date, end_date, total_price) VALUES (?, ?, ?, ?, ?)");
+    $stmt->bind_param("sissi", $vehicle_id, $renter_id, $start_date, $end_date, $total_price);
+    $stmt->execute();
+    $stmt->close();
+    
+    $messages[] = "Rental berhasil ditambahkan. Total harga: Rp " . number_format($total_price, 0, ',', '.');
+}
+
 $action = isset($_GET['action']) ? $_GET['action'] : '';
 $id = isset($_GET['id']) ? $_GET['id'] : '';
 
@@ -119,6 +141,12 @@ require_once 'header.php';
     <section id="rental-section" class="card">
         <h2>Rental</h2>
         <button onclick="location.href='rental.php?action=create'">Tambah Rental</button>
+        <?php
+        echo "<div class='card'>";
+        echo "<h3>Laporan Agregat</h3>";
+        echo "<p>Total Pendapatan: Rp " . number_format($total_pendapatan, 0, ',', '.') . "</p>";
+        echo "</div>";
+        ?>
         <table aria-label="Daftar Rental">
             <thead>
                 <tr>
