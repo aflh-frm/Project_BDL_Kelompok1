@@ -1,176 +1,224 @@
-<?php
-require_once 'config.php';
-require_once 'function.php';
-
-$action = isset($_GET['action']) ? $_GET['action'] : '';
-$id = isset($_GET['id']) ? $_GET['id'] : '';
-
-$errors = [];
-$messages = [];
-
-// Handle form submission
-if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $form_type = $_POST['form_type'] ?? '';
-    try {
-        if ($form_type === 'kendaraan_create') {
-            $brand = clean_input($_POST['brand']);
-            $model = clean_input($_POST['model']);
-            $year = clean_input($_POST['year']);
-            $vehicle_id = clean_input($_POST['vehicle_id']);
-            $daily_price = clean_input($_POST['daily_price']);
-            $status = clean_input($_POST['status']);
-            
-            $stmt = $conn->prepare("INSERT INTO kendaraan (vehicle_id, brand, model, year, daily_price, status) VALUES (?, ?, ?, ?, ?, ?)");
-            $stmt->bind_param("sssids", $vehicle_id, $brand, $model, $year, $daily_price, $status);
-            $stmt->execute();
-            $stmt->close();
-            $messages[] = "Kendaraan berhasil ditambahkan.";
-            
-        } elseif ($form_type === 'kendaraan_update') {
-            $vehicle_id = clean_input($_POST['vehicle_id']);
-            $brand = clean_input($_POST['brand']);
-            $model = clean_input($_POST['model']);
-            $year = clean_input($_POST['year']);
-            $daily_price = clean_input($_POST['daily_price']);
-            $status = clean_input($_POST['status']);
-            
-            $stmt = $conn->prepare("UPDATE kendaraan SET brand=?, model=?, year=?, daily_price=?, status=? WHERE vehicle_id=?");
-            $stmt->bind_param("ssidss", $brand, $model, $year, $daily_price, $status, $vehicle_id);
-            $stmt->execute();
-            $stmt->close();
-            $messages[] = "Kendaraan berhasil diperbarui.";
-        }
-    } catch (Exception $e) {
-        $errors[] = $e->getMessage();
+<?php include 'functions.php'; 
+// Handle delete action
+if (isset($_GET['action']) && $_GET['action'] == 'delete' && isset($_GET['id'])) {
+    $id = $_GET['id'];
+    $delete_query = "DELETE FROM kendaraan WHERE vehicle_id = '$id'";
+    if (query($delete_query)) {
+        header("Location: kendaraan.php?success=delete");
+        exit();
+    } else {
+        $error = "Gagal menghapus kendaraan";
     }
 }
 
-// Handle delete
-if ($action === 'delete' && $id) {
-    try {
-        $stmt = $conn->prepare("DELETE FROM kendaraan WHERE vehicle_id=?");
-        $stmt->bind_param("s", $id);
-        $stmt->execute();
-        $stmt->close();
-        $messages[] = "Kendaraan berhasil dihapus.";
-    } catch (Exception $e) {
-        $errors[] = "Gagal menghapus: ".$e->getMessage();
+// Handle edit form submission
+if (isset($_POST['action']) && $_POST['action'] == 'edit_vehicle') {
+    $id = $_POST['vehicle_id'];
+    $brand = $_POST['brand'];
+    $model = $_POST['model'];
+    $year = $_POST['year'];
+    $price = $_POST['price'];
+    $status = $_POST['status'];
+    
+    $update_query = "UPDATE kendaraan SET 
+                    brand = '$brand',
+                    model = '$model',
+                    year = $year,
+                    daily_price = $price,
+                    status = '$status'
+                    WHERE vehicle_id = '$id'";
+    
+    if (query($update_query)) {
+        header("Location: kendaraan.php?success=edit");
+        exit();
+    } else {
+        $error = "Gagal mengupdate kendaraan";
     }
 }
 
-// Ambil data kendaraan
-$kendaraan_rows = $conn->query("SELECT * FROM kendaraan ORDER BY brand ASC");
-
-// Untuk form edit
-$edit_data = null;
-if ($action === 'edit' && $id) {
-    $stmt = $conn->prepare("SELECT * FROM kendaraan WHERE vehicle_id=?");
-    $stmt->bind_param("s", $id);
-    $stmt->execute();
-    $edit_data = $stmt->get_result()->fetch_assoc();
-    $stmt->close();
+// Handle add form submission
+if (isset($_POST['action']) && $_POST['action'] == 'add_vehicle') {
+    // Get the highest existing ID
+    $result = query("SELECT vehicle_id FROM kendaraan ORDER BY vehicle_id DESC LIMIT 1");
+    $last_id = 'V000'; // Default value if no vehicles exist
+    
+    if (mysqli_num_rows($result) > 0) {
+        $row = mysqli_fetch_assoc($result);
+        $last_id = $row['vehicle_id'];
+    }
+    
+    // Extract the numeric part and increment
+    $num = (int) substr($last_id, 1);
+    $num++;
+    $id = 'V' . str_pad($num, 3, '0', STR_PAD_LEFT);
+    
+    $brand = $_POST['brand'];
+    $model = $_POST['model'];
+    $year = $_POST['year'];
+    $price = $_POST['price'];
+    $status = $_POST['status'];
+    
+    $insert_query = "INSERT INTO kendaraan (vehicle_id, brand, model, year, daily_price, status)
+                    VALUES ('$id', '$brand', '$model', $year, $price, '$status')";
+    
+    if (query($insert_query)) {
+        header("Location: kendaraan.php?success=add");
+        exit();
+    } else {
+        $error = "Gagal menambahkan kendaraan";
+    }
 }
-
-require_once 'header.php';
 ?>
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <title>Kelola Kendaraan - CarRent</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="admin.css">
+    <script>
+        // Function to show success message
+        function showSuccessMessage() {
+            const urlParams = new URLSearchParams(window.location.search);
+            if (urlParams.has('success')) {
+                const action = urlParams.get('success');
+                
+                if (action === 'add') confirm('Kendaraan berhasil ditambahkan!');
+                else if (action === 'edit') confirm('Kendaraan berhasil diupdate!');
+                else if (action === 'delete') confirm('Kendaraan berhasil dihapus!');
+            }
+        }
+        
+        // Function to confirm deletion
+        function confirmDelete(id) {
+            if (confirm('Apakah Anda yakin ingin menghapus kendaraan ini?')) {
+                window.location.href = `kendaraan.php?action=delete&id=${id}`;
+            }
+        }
+        
+        // Function to open edit modal
+        function openEditModal(id, brand, model, year, price, status) {
+            document.getElementById('editVehicleId').value = id;
+            document.getElementById('editBrand').value = brand;
+            document.getElementById('editModel').value = model;
+            document.getElementById('editYear').value = year;
+            document.getElementById('editPrice').value = price;
+            document.getElementById('editStatus').value = status;
+            
+            document.getElementById('editModal').style.display = 'block';
+        }
+        
+        // Close modals when clicking X
+        window.onload = function() {
+            showSuccessMessage();
+            
+            const modals = document.querySelectorAll('.modal');
+            const closeButtons = document.querySelectorAll('.close');
+            
+            closeButtons.forEach(button => {
+                button.onclick = function() {
+                    modals.forEach(modal => {
+                        modal.style.display = 'none';
+                    });
+                }
+            });
+        }
+    </script>
+</head>
+<body>
+    <div class="sidebar">
+        <h2>CarRent Admin</h2>
+        <ul>
+            <li><a href="index.php">Dashboard</a></li>
+            <li><a href="kendaraan.php" class="active">Kelola Kendaraan</a></li>
+            <li><a href="rental.php">History Rental</a></li>
+            <li><a href="tambah_rental.php">Kelola Rental</a></li>
+        </ul>
+    </div>
+    <div class="main-content">
+        <header>
+            <h1>Kelola Kendaraan</h1>
+            <?php if (isset($error)): ?>
+                <div class="error-message"><?php echo $error; ?></div>
+            <?php endif; ?>
+        </header>
+        <div class="crud-actions">
+            <button onclick="document.getElementById('addModal').style.display='block'">Tambah Kendaraan</button>
+        </div>
 
-<div class="container">
-    <?php if ($messages): ?>
-        <?php foreach($messages as $msg): ?>
-            <div class="message"><?php echo $msg; ?></div>
-        <?php endforeach; ?>
-    <?php endif; ?>
-    <?php if ($errors): ?>
-        <?php foreach($errors as $err): ?>
-            <div class="message error"><?php echo $err; ?></div>
-        <?php endforeach; ?>
-    <?php endif; ?>
-
-    <section id="kendaraan-section" class="card">
-        <h2>Kendaraan</h2>
-        <button onclick="location.href='kendaraan.php?action=create'">Tambah Kendaraan</button>
-        <table aria-label="Daftar Kendaraan">
+        <table>
             <thead>
                 <tr>
                     <th>ID</th>
-                    <th>Brand</th>
+                    <th>Merk</th>
                     <th>Model</th>
                     <th>Tahun</th>
-                    <th>Harga Sewa</th>
+                    <th>Harga/Hari</th>
                     <th>Status</th>
                     <th>Aksi</th>
                 </tr>
             </thead>
             <tbody>
-                <?php while($row = $kendaraan_rows->fetch_assoc()): ?>
-                <tr>
-                    <td><?= $row['vehicle_id'] ?></td>
-                    <td><?= $row['brand'] ?></td>
-                    <td><?= $row['model'] ?></td>
-                    <td><?= $row['year'] ?></td>
-                    <td><?= number_format($row['daily_price'], 0, ',', '.') ?></td>
-                    <td><?= $row['status'] ?></td>
-                    <td class="actions">
-                        <a href="kendaraan.php?action=edit&id=<?= $row['vehicle_id'] ?>">Edit</a>
-                        <a href="kendaraan.php?action=delete&id=<?= $row['vehicle_id'] ?>" onclick="return confirm('Yakin ingin menghapus?')">Hapus</a>
-                    </td>
-                </tr>
-                <?php endwhile; ?>
+                <?php
+                $kendaraan = query("SELECT * FROM kendaraan");
+                while ($row = mysqli_fetch_assoc($kendaraan)) {
+                    echo "<tr>
+                        <td>{$row['vehicle_id']}</td>
+                        <td>{$row['brand']}</td>
+                        <td>{$row['model']}</td>
+                        <td>{$row['year']}</td>
+                        <td>" . rupiah($row['daily_price']) . "</td>
+                        <td>{$row['status']}</td>
+                        <td>
+                            <button class='edit' onclick=\"openEditModal('{$row['vehicle_id']}', '{$row['brand']}', '{$row['model']}', '{$row['year']}', '{$row['daily_price']}', '{$row['status']}')\">Edit</button>
+                            <button class='delete' onclick=\"confirmDelete('{$row['vehicle_id']}')\">Hapus</button>
+                        </td>
+                    </tr>";
+                }
+                ?>
             </tbody>
         </table>
-    </section>
-
-    <?php if ($action === 'create' || $action === 'edit'): ?>
-    <section id="create-section" class="card">
-        <h2><?= ($action === 'create') ? 'Tambah' : 'Edit' ?> Kendaraan</h2>
-        <form method="POST">
-            <input type="hidden" name="form_type" value="kendaraan_<?= ($action === 'create') ? 'create' : 'update' ?>">
-            
-            <div class="form-group">
-                <label for="vehicle_id">ID Kendaraan</label>
-                <input type="text" name="vehicle_id" id="vehicle_id" 
-                       value="<?= isset($edit_data['vehicle_id']) ? $edit_data['vehicle_id'] : '' ?>" 
-                       <?= ($action === 'edit') ? 'readonly' : 'required' ?>>
+        
+        <!-- Modal Tambah Kendaraan -->
+        <div id="addModal" class="modal">
+            <div class="modal-content">
+                <span class="close">&times;</span>
+                <h2>Tambah Kendaraan Baru</h2>
+                <form action="kendaraan.php" method="POST">
+                    <input type="hidden" name="action" value="add_vehicle">
+                    <input type="text" name="brand" placeholder="Merk" required>
+                    <input type="text" name="model" placeholder="Model" required>
+                    <input type="number" name="year" placeholder="Tahun" required>
+                    <input type="number" name="price" placeholder="Harga/Hari" required>
+                    <select name="status">
+                        <option value="Tersedia">Tersedia</option>
+                        <option value="Maintenance">Maintenance</option>
+                    </select>
+                    <button type="submit">Simpan</button>
+                </form>
             </div>
-            
-            <div class="form-group">
-                <label for="brand">Brand</label>
-                <input type="text" name="brand" id="brand" 
-                       value="<?= isset($edit_data['brand']) ? $edit_data['brand'] : '' ?>" required>
+        </div>
+        
+        <!-- Modal Edit Kendaraan -->
+        <div id="editModal" class="modal">
+            <div class="modal-content">
+                <span class="close">&times;</span>
+                <h2>Edit Kendaraan</h2>
+                <form action="kendaraan.php" method="POST">
+                    <input type="hidden" name="action" value="edit_vehicle">
+                    <input type="hidden" id="editVehicleId" name="vehicle_id">
+                    <input type="text" id="editBrand" name="brand" placeholder="Merk" required>
+                    <input type="text" id="editModel" name="model" placeholder="Model" required>
+                    <input type="number" id="editYear" name="year" placeholder="Tahun" required>
+                    <input type="number" id="editPrice" name="price" placeholder="Harga/Hari" required>
+                    <select id="editStatus" name="status">
+                        <option value="Tersedia">Tersedia</option>
+                        <option value="Maintenance">Maintenance</option>
+                    </select>
+                    <button type="submit">Update</button>
+                </form>
             </div>
-            
-            <div class="form-group">
-                <label for="model">Model</label>
-                <input type="text" name="model" id="model" 
-                       value="<?= isset($edit_data['model']) ? $edit_data['model'] : '' ?>" required>
-            </div>
-            
-            <div class="form-group">
-                <label for="year">Tahun</label>
-                <input type="number" name="year" id="year" 
-                       value="<?= isset($edit_data['year']) ? $edit_data['year'] : '' ?>" required>
-            </div>
-            
-            <div class="form-group">
-                <label for="daily_price">Harga Sewa per Hari</label>
-                <input type="number" name="daily_price" id="daily_price" 
-                       value="<?= isset($edit_data['daily_price']) ? $edit_data['daily_price'] : '' ?>" required>
-            </div>
-            
-            <div class="form-group">
-                <label for="status">Status</label>
-                <select name="status" id="status" required>
-                    <option value="Tersedia" <?= isset($edit_data['status']) && $edit_data['status'] == 'Tersedia' ? 'selected' : '' ?>>Tersedia</option>
-                    <option value="Maintenance" <?= isset($edit_data['status']) && $edit_data['status'] == 'Maintenance' ? 'selected' : '' ?>>Maintenance</option>
-                    <option value="Sedang disewa" <?= isset($edit_data['status']) && $edit_data['status'] == 'Sedang disewa' ? 'selected' : '' ?>>Sedang disewa</option>
-                </select>
-            </div>
-            
-            <button type="submit">Simpan</button>
-            <button type="button" onclick="location.href='kendaraan.php'">Batal</button>
-        </form>
-    </section>
-    <?php endif; ?>
-</div>
-
-<?php require_once 'footer.php'; ?>
+        </div>
+    </div>
+</body>
+</html>
